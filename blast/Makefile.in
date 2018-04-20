@@ -1,0 +1,81 @@
+#  Copyright 2016 UTK JICS AACE
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#           http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
+#
+#  ===========================================================================
+# # $Id: Makefile.in 371962 2012-08-14 09:45:56Z coulouri $
+
+# Meta-makefile("APP" project)
+#################################
+
+REQUIRES = objects algo
+
+LIB_PROJ = blast_app_util
+
+APP_PROJ = \
+blastp \
+hpc_blastp \
+blastn \
+hpc_blastn \
+blastx \
+hpc_blastx \
+tblastn \
+tblastx \
+psiblast \
+rpsblast \
+rpstblastn \
+blast_formatter \
+deltablast \
+seedtop
+
+USR_PROJ = legacy_blast update_blastdb
+
+srcdir = @srcdir@
+include @builddir@/Makefile.meta
+
+.PHONY: all $(APP_PROJ)
+
+lib:
+	${MAKE} ${MFLAGS} -f Makefile.blast_app_util_lib
+blastn: lib
+	${MAKE} ${MFLAGS} -f Makefile.blastn_app
+hpc_blastn: lib
+	${MAKE} ${MFLAGS} -f Makefile.hpc_blastn_app
+blastp: lib
+	${MAKE} ${MFLAGS} -f Makefile.blastp_app
+hpc_blastp: lib
+	${MAKE} ${MFLAGS} -f Makefile.hpc_blastp_app
+blastx: lib
+	${MAKE} ${MFLAGS} -f Makefile.blastx_app
+tblastn: lib
+	${MAKE} ${MFLAGS} -f Makefile.tblastn_app
+tblastx: lib
+	${MAKE} ${MFLAGS} -f Makefile.tblastx_app
+psiblast: lib
+	${MAKE} ${MFLAGS} -f Makefile.psiblast_app
+rpsblast: lib
+	${MAKE} ${MFLAGS} -f Makefile.rpsblast_app
+rpstblastn: lib
+	${MAKE} ${MFLAGS} -f Makefile.rpstblastn_app
+igblastn: lib
+	${MAKE} ${MFLAGS} -f Makefile.igblastn_app
+igblastp: lib
+	${MAKE} ${MFLAGS} -f Makefile.igblastp_app
+blast_formatter: lib
+	${MAKE} ${MFLAGS} -f Makefile.blast_formatter_app
+seedtop: lib
+	${MAKE} ${MFLAGS} -f Makefile.seedtop_app
+deltablast: lib
+	${MAKE} ${MFLAGS} -f Makefile.deltablast_app
+

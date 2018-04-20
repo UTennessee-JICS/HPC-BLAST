@@ -1,0 +1,4 @@
+gcc -msse2 -DHAVE_SSE2 -DMEXP=607 -o database_sample SFMT.c database_sample.c -lm
+
+icpc -O2 -std=c++11 stitch_blast_output.cpp -o stitch_blast_output
+
