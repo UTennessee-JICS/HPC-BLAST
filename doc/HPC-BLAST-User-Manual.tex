@@ -95,15 +95,13 @@
 
 This document is intended to be a user manual that demonstrates how to compile and execute HPC-BLAST, the high performance implementation of NCBI BLAST developed at the Intel Parallel Computing Center at the
 University of Tennessee, Knoxville. Since HPC-BLAST compilation will happen as a result of compiling NCBI BLAST, this document also covers the compilation and execution of the reference implementation provided by NCBI.
-The documentation also covers compilation and execution of mpiBLAST in order to provide a second parallel BLAST implementation for comparison purposes.  The targeted architectures covered by the documentation include
-standard x86 based processors and the Many Integrated Cores (MIC) architecture as realized by the Intel Xeon Phi coprocessor.  The documentation also covers usage of auxiliary software tools commonly used in conjunction
+The documentation also covers compilation and execution of mpiBLAST in order to provide a second parallel BLAST implementation for comparison purposes.  This document covers the compilation of of HPC-BLAST
+for Intel Xeon and Intel Xeon Phi (Knights Landing) processors. Compilation for the AMD Epyc processor is also discussed.  The documentation also covers usage of auxiliary software tools commonly used in conjunction
 with NCBI BLAST, tools specific to mpiBLAST, and tools specific to HPC-BLAST.  Finally, specific examples will be given to illustrate how to use the BLAST implementations, with priority given to the use of HPC-BLAST.
-Note, many of the provided usage examples will include commands and tools that are specific to the \beac cluster located at the Joint Institute for Computational Sciences.
+Note, many of the provided usage examples will include commands and tools that are specific to the software environment of the Joint Institute for Computational Sciences.
 
 A special thanks is due to Dr. Albert Golembiowski of Intel who provided excellent documentation for compiling NCBI BLAST version 2.2.30.  The approach Dr. Golembiowski outlined is used as a basis for the compilation
-guide of BLAST version 2.2.31
-%2.2.[28,29,30]
-provided in this document.
+guide of BLAST version 2.7.1 provided in this document.
 
 \subsection{HPC-BLAST Overview} \label{ssec:hpc-overview}
 
@@ -113,9 +111,7 @@ processes (ranks) that each own a subset of the complete database.  These databa
 sequences.  For a given replication group, each process owns different database components.  Within this replication group, each process is given the same set of queries to scan.  It is also possible to have a single rank comprise
 a replication group.  In this case, the single rank searches its set of queries against the entire database.  HPC-BLAST allows multiple replication groups to be launched so that different replication groups may search only a portion
 of the entire query input file.  The ranks in an HPC-BLAST parallel job also support multithreading.  The distribution of work within the rank using threads is similar to how work is distributed at the MPI level.   There are three different
-classifications for the threads that HPC-BLAST can spawn; thread group, team leader, and search thread.  Further, all HPC-BLAST ranks in a parallel job have the same distribution of threads.  The exception to this is when
-running in symmetric, or hybrid, mode when all ranks on the host processor have the same thread distribution and all ranks running on the Xeon Phi coprocessors have the same distribution, but the thread distribution between
-different architectures is not necessarily equal.  
+classifications for the threads that HPC-BLAST can spawn; thread group, team leader, and search thread.  Further, all HPC-BLAST ranks in a parallel job have the same distribution of threads.
 
 The thread classifications are now briefly described.  A thread group is a collection of threads, similar to replication groups, where each member of the thread group owns a portion of the database component assigned to the process.
 As in the case of replication groups, threads in a thread group, called team leader threads, search with the same set of queries.  Thus, team leader threads in different thread groups search with different portions of the query set
@@ -124,9 +120,11 @@ is given on the command line as is done with NCBI BLAST.  The particular distrib
 \ref{ssec:runncbi}.  If NCBI-compliance is important for your work, the HPC-BLAST development team recommends using only thread groups and search threads in the thread distribution of a parallel job.  Here, NCBI-compliance
 means that the results produced by HPC-BLAST will match the results from NCBI BLAST up to dependency in the order in which the queries were searched.  Experiments have shown that the use of team leaders in the thread
 distribution leads to HPC-BLAST finding more matches than NCBI BLAST.  If finding additional matches is not problematic, you may find that using some team leaders leads to better performance than using thread groups and
-search threads alone. In general, best performance of HPC-BLAST is seen when the thread distribution uses mostly thread groups.  However, when using the maximum number of threads on a particular architecture, it is generally
-best to allocate 2 to 3 threads in the search thread component and the remaining threads as thread groups.  For example, we wish to run 240 threads on an Intel Xeon Phi coprocessor and we want to use two search threads per
-thread group.  Thus, we specify a distribution of 120 thread groups, 1 team leader per thread group, and 2 search thread per team leader, since \(120 \times 1 \times 2 = 240\).
+search threads alone.
+
+In the previous release of HPC-BLAST, version 1.0, it was observed that the best performance of HPC-BLAST was seen when the thread distribution favored thread groups with only 2-3 threads reserved for NCBI
+search threads. With the move to NCBI BLAST toolkit version 2.7.1, the dynamic has changed due to improved parallelization of searching in the NCBI engine. In many cases, it may be best to allocate the available threads
+to search threads. 
 
 \clearpage
 
@@ -148,7 +146,7 @@ from our GitHub page.
     \end{itemize}
   \item Git Zip Download:
   \begin{itemize}
-    \item  Simply use the "zip download" option on our webpage at:
+    \item  Simply use the``zip download'' option on our webpage at:
     \item https://github.com/UTennessee-JICS/HPC-BLAST
   \end{itemize}
 \end{itemize}
@@ -174,19 +172,17 @@ to build the binaries. It assumes that the Intel compiler suite is available.
 
 \section{Compiling BLAST} \label{sec:compile}
 
-This section of the user manual focuses on the compilation strategies employed to successfully build working binaries of the BLAST implementations for both Intel Xeon processors and Intel Xeon Phi coprocessors.  For the latter,
-execution is done in native mode; i.e. all execution is done on the coprocessor device.  The example build guides assume the use of the Intel compilers and the Intel MPI libraries.  The build guides also provide suggested make
+This section of the user manual focuses on the compilation strategies employed to successfully build working binaries of the BLAST implementations for both Intel Xeon and Xeon Phi processors.
+The example build guides assume the use of the Intel compilers and the Intel MPI libraries, specifically Intel Parallel Studio version 2017.2.174.  Version 6.3.0 of GCC was also used for needed system libraries and tools.
+The build guides also provide suggested make
 flags that have been tested to work; others combinations may be possible, but have not been tested.\\
 
 \noindent {\bf NOTE: }An experimental script, \verb^make_hpc_blast.sh^, is provided in the repository that implements the instructions outlined below. It is intended to automate the process and may
 work out of the box for you, but it is likely that some commands will need to be modified for your particular setup. \\
 
-\noindent {\bf NOTE:  In order to compile NCBI BLAST, and by extension HPC-BLAST for the Xeon Phi, BLAST must first be compiled for the host processor, at least once.}
+\subsection{Compiling NCBI/HPC BLAST v2.7.1} \label{ssec:ncbi-compile}
 
-\subsection{Compiling NCBI BLAST v2.2.31} \label{ssec:ncbi-compile}
-
-\subsubsection{Compiling for the Host} \label{sssec:ncbi-host}
-First, NCBI BLAST will be built for the host processor.  The repository includes a copy of the tarball obtained from NCBI.
+The repository includes a copy of the tarball obtained from NCBI.
 Uncompress the tar file:
 \begin{verbatim}
 $> tar xvzf ncbi-blast-2.2.31+-src.tar.gz
@@ -198,16 +194,14 @@ $> cd ncbi-blast-2.2.31+-src/c++
 \noindent Next, we copy the files for HPC-BLAST into the appropriate directories of the NCBI BLAST toolkit.  
 For simplicity, we will assume that a local copy of the
 GitHub repository is available for copying the files.  
-% $> cp /PATH/TO/REPO/include/prelim_stage.hpp include/algo/blast/api
-% $> cp /PATH/TO/REPO/api/prelim_stage.cpp src/algo/blast/api
 \footnotesize
 \begin{verbatim}
 $> cp /PATH/TO/REPO/api/blast_options_handle.cpp src/algo/blast/api
-$> cp /PATH/TO/REPO/include/local_blast.hpp include/algo/blast/api
-$> cp /PATH/TO/REPO/include/traceback_stage.hpp include/algo/blast/api
-
 $> cp /PATH/TO/REPO/api/local_blast.cpp src/algo/blast/api
 $> cp /PATH/TO/REPO/api/traceback_stage.cpp src/algo/blast/api
+
+$> cp /PATH/TO/REPO/include/local_blast.hpp include/algo/blast/api
+$> cp /PATH/TO/REPO/include/traceback_stage.hpp include/algo/blast/api
 
 $> cp /PATH/TO/REPO/blast/hpc_blastp_app.cpp src/app/blast
 $> cp /PATH/TO/REPO/blast/hpc_blastn_app.cpp src/app/blast
@@ -218,27 +212,6 @@ $> cp /PATH/TO/REPO/blast/Makefile.in src/app/blast
 \normalsize
 
 \noindent \rule{16cm}{0.4pt}
-
-\noindent Before beginning the compilation, there are two source code modifications that need to be made to ensure working binaries.  The first modification is to the \verb^BLAST_GetGappedScore^ function in the file:
-\begin{verbatim}
-/PATH/TO/ncbi-blast-2.2.31+-src/c++/src/algo/blast/core/blast_gapalign.c
-\end{verbatim}
-Just before the definition of the function, insert \verb^#pragma intel optimization_level 1^ (at line 3401).  This will force the Intel compiler to drop the optimization level to 1 for this function so that the
-compiled binaries will operate correctly.  The second modification is to the file:
-\begin{verbatim}
-/PATH/TO/ncbi-blast-2.2.31+-src/c++/include/corelib/ncbifloat.h
-\end{verbatim}
-\noindent Look for the line (line number 71):
-\begin{verbatim}
-#  if __cplusplus >= 201103L && defined(_GLIBCXX_CONSTEXPR)
-\end{verbatim}
-\noindent and add to it the following:
-\begin{verbatim}
-&& !defined (__MIC__)
-\end{verbatim}
-\noindent which will disable the macro when compiling for the MIC architecture.
-
-\noindent \rule{16cm}{0.4pt} \\
 
 \noindent Now, we can begin the compilation.  Enter the  \verb^c++^ directory.  The first step is to set up the environment variables:
 \begin{verbatim}
@@ -259,13 +232,19 @@ prepended with the compiler version.  Now, enter the build directory of the root
 $> cd ROOT-DIR/build
 \end{verbatim}
 \noindent Next, the file \verb^Makefile.mk^ is to be edited. The instructions are:
-Change the \verb^-O2^ flag on lines 93 and 94 corresponding to \verb^CONF_CFLAGS^ and \verb^CONF_CXXFLAGS^ to \verb^-O3^, \verb^-O^ to \verb^-O3^ on line 98 corresponding
-to \verb^CONF_LDFLAGS^
+\begin{itemize}
+\item Add \verb^-ww3377^ to the end of lines 83, 84, and 86 corresponding to \verb^CONF_C^, \verb^CONF_CXX^, and \verb^CONF_CXXCPP^.
+\item Change the \verb^-O2^ flag on lines 93 and 94 corresponding to \verb^CONF_CFLAGS^ and \verb^CONF_CXXFLAGS^ to \verb^-O3^.
+\item Change the \verb^-O^ to \verb^-O3^ on line 98 corresponding to \verb^CONF_LDFLAGS^.
+\item Add the appropriate flag on lines 235-237 to specify architectural specific instructions should be used for files compiled with ``FAST'' flags. For instance, if compiling for the Intel Xeon Phi (Knights Landing), use
+\verb^-xMIC-AVX512^.
+\end{itemize}
 \noindent Now, the build process can begin with
 \begin{verbatim}
 $> make all_r
 \end{verbatim}
-\noindent The compilation may require a few hours depending on processor load and system configuration.  The process may be dramatically sped up using multiple cores.  For example, if we were to compile on a \beac node, we might instead use:
+\noindent The compilation may require a few hours depending on processor load and system configuration.  The process may be dramatically sped up using multiple cores.  For example, if we were to compile on a typical compute
+node, we might instead use:
 \begin{verbatim}
 $> make -j8 -k all_r 
 \end{verbatim}
@@ -273,50 +252,20 @@ $> make -j8 -k all_r
 \begin{verbatim}
 ./ROOT-DIR/bin
 \end{verbatim}
-\noindent Included in the \emph{bin} directory is the \verb^datatool^ binary.  This binary is required for the compilation of the Phi native build so it should be moved to a convenient location or the current directory should be noted.
 
-%%============================== PHI Build Generic ===========================
-\subsubsection{Compiling for the Xeon Phi} \label{sssec:ncbi-phi}
+\subsection{Compile Notes for NCBI/HPC BLAST v2.7.1 on the AMD Epyc} \label{ssec:ncbi-compile}
 
-This section assumes that all the steps in \ref{sssec:ncbi-host} have been followed and the \verb^datatool^ binary has been successfully built.  First, enter into the \verb^c++^ directory of the top level source directory:
+HPC-BLAST 1.1.0 can be compiled for the AMD Epyc, as well. The procedure is similar to the one outlined above for the Intel Xeon and Xeon Phi processors. HPC-BLAST has been compiled successfully using
+Intel Parallel Studio 2017.2.174 and GCC 6.3.0. Before running the configuration, set up the environment as follows:
 \begin{verbatim}
-$> cd PATH/TO/ncbi-blast-2.2.31+-src/c++
+$> export CC=mpicc
+$> export CXX=mpicxx
+$> export LD=ld
+$> export AR=ar 
 \end{verbatim}
-Set up the appropriate environment variables:
-\begin{verbatim}
-$> export CC=mpiicc
-$> export CXX=mpiicpc
-$> export LD=xild
-$> export AR="xiar crs" 
-\end{verbatim}
-\noindent Next, the configuration script is executed:
-\begin{verbatim}
-$> ./configure --without-3psw --with-bin-release --with-static-exe --with-mt \
- --without-debug --without-boost --without-strip --with-build-root=< ... >
-\end{verbatim}
-\noindent As before, \verb^< ... >^ is the name of the desired build directory.  \emph{It is highly recommended that a build directory is specified so that the Xeon processor build is not overwritten}. If a build directory was specified for the Xeon compilation,
-be sure to choose a different build directory for the Phi native compilation.  Now, enter the build directory of the root directory:
-\begin{verbatim}
-$> cd ROOT-DIR-PHI/build
-\end{verbatim}
-\noindent Open \verb^Makefile.mk^ in a text editor.  Several lines will need to be changed in order to build for the Intel Xeon Phi.  Depending on the specific version of the toolkit, the edits are:
-On lines 93 and 94, change the \verb^-O2^ flag to \verb^-O3 -mmic^, corresponding to variables \verb^CONF_CFLAGS^ and \verb^CONF_CXXFLAGS^; change line 98 from \verb^-O^ to \verb^-O3 -mmic^ for the \verb^CONF_LDFLAGS^ variable; replace \verb^-axSSSE3^ with \verb^-mmic^ on lines 220-222 corresponding to the \verb^FAST_CFLAGS^, \verb^FAST_CXXFLAGS^, and \verb^FAST_LDFLAGS^ variables
-\noindent Now, set the environment variable to point to the \verb^datatool^ created in the host build:
-\begin{verbatim}
-$> export NCBI_DATATOOL_PATH=/PATH/TO/DATATOOL/BINARY
-\end{verbatim}
-\noindent The compilation can now proceed with
-\begin{verbatim}
-$> make all_r
-\end{verbatim}
-\noindent Alternatively, use
-\begin{verbatim}
-$> make -j8 -k all_r
-\end{verbatim}
-\noindent to reduce the compile time.  After completion, all Phi native binaries will be located in
-\begin{verbatim}
-./ROOT-DIR-PHI/bin
-\end{verbatim}
+This way the Intel MPI libraries will be linked, but the sources will be compiled with GCC. Now, run the configuration script as above. Note that when editing the file Makefile.mk,
+it is no longer necessary to use the flag \verb^-ww3377^. For building architecture specific binaries, use the flag
+\verb^-march=znver1^ on lines 235-237 of the Makefile.mk file.
 
 \subsection{Compiling mpiBLAST} \label{sec:mpicomp}
 
@@ -333,10 +282,7 @@ $> wget http://www.mpiblast.org/downloads/files/mpiBLAST-1.6.0.tgz
 $> tar xvzf mpiBLAST-1.6.0.tgz
 \end{verbatim}
 
-\noindent {\bf Note:} Unlike HPC-BLAST, we may compile mpiBLAST for the Xeon Phi without first compiling for the host Xeon processor.  However, it is recommended that mpiBLAST be built for the Xeon (or host) processor so that we may
-have the \emph{mpiformatdb} binary available for database formatting.  It is preferable to perform this task on the host processor since this is a serial task.
-
-\subsubsection{Compiling for the Xeon Host} \label{sssec:mpiblasthost}
+\subsubsection{Compiling for Intel Xeon processors} \label{sssec:mpiblasthost}
 \noindent Enter the top level directory of the mpiBLAST source directory,
 \begin{verbatim}
 $> cd /PATH/TO/mpiblast-1.6.0
@@ -384,79 +330,6 @@ $> emacs src/Makefile
 \item Adjust the compiler on line 108 from \verb^mpicc^ to \verb^mpiicc^ to invoke the Intel MPI compiler.
 \item Change the optimization level on line 110 from \verb^-O2^ to \verb^-O3^.  Optionally, the \verb^-g^ flag may be removed.
 \item Adjust the compiler on line 118 from \verb^mpicxx^ to \verb^mpiicpc^ to invoke the Intel MPI compiler.
-\item Change the optimization level on line 120 from \verb^-O2^ to \verb^-O3^.  Optionally, the \verb^-g^ flag may be removed.
-\end{itemize}
-\noindent Finally, begin the compilation process with \verb^make^.
-\begin{verbatim}
-$> make
-\end{verbatim}
-\noindent The binaries (\verb^mpiformatdb^, \verb^mpiblast^, and \verb^mpiblast_cleanup^) will be placed in the \verb^src^ subdirectory upon completion.
-
-\subsubsection{Compiling for the Xeon Phi} \label{sssec:mpiblastphi}
-
-\noindent {\bf Note:} \small The following directions assume a clean build.  If you have previously built mpiBLAST for the Xeon processor, it is recommended that you:
-\begin{itemize}
-\item Rename the mpiBLAST binaries for the Xeon so that they do not get overwritten.
-\item Remove the host object files used by mpiBLAST:
-\begin{verbatim}
-$> rm src/*.o
-\end{verbatim}
-\item Remove the object and source files used by NCBI on the host:
-\begin{verbatim}
-$> rm ncbi/build/*
-$> rm ncbi/bin/*
-\end{verbatim}
-\end{itemize}
-\noindent Also, be aware that the following instructions may have to be modified slightly if mpiBLAST has been compiled for the host since some of the directions overlap the host build instructions.\\
-\normalsize
-
-\noindent Enter the top level directory of the mpiBLAST source directory,
-\begin{verbatim}
-$> cd /PATH/TO/mpiblast-1.6.0
-\end{verbatim}
-\noindent As in the compilation of HPC-BLAST, mpiBLAST requires that NCBI BLAST is compiled first.  The appropriate NCBI BLAST version is already packaged with the mpiBLAST tarball.
-From the top level directory, go into the \verb^ncbi/platform^ directory.
-\begin{verbatim}
-$> cd ncbi/platform
-\end{verbatim}
-\noindent Edit the file \verb^linux_icc.ncbi.mk^ by changing, on line 8, \verb^NCBI_AR=ar^ to \verb^NCBI_AR=xiar^.  Modify line 9 to build
-for the Phi by inserting \verb^-mmic^ immediately after \verb^icc^.  On lines 11 and 12, remove the option \verb^-tpp7^ from the two variables
-\verb^NCBI_LDFLAGS1^ and \verb^NCBI_OPTFLAG^.  Next, go up one level in the directory structure and go into the \verb^make^ directory.
-\begin{verbatim}
-$> cd ../make
-\end{verbatim}
-\noindent Then, edit the file \verb^makedis.csh^ by changing, on line 316, from
-\begin{verbatim}
-set NCBI_DOT_MK = ncbi/platform/${platform}.ncbi.mk
-\end{verbatim}
-\noindent to
-\begin{verbatim}
-set NCBI_DOT_MK = ncbi/platform/linux_icc.ncbi.mk
-\end{verbatim}
-\noindent Finally, uncomment lines 358 and 359 which set both \verb^HAVE_OGL^ and \verb^HAVE_MOTIF^ to 0.
-These changes will ensure that the NCBI BLAST build uses the Intel compilers to build the binaries.  Now, move up two directory levels to the root directory and start the build process with:
-\begin{verbatim}
-$> ./ncbi/make/makedis.csh
-\end{verbatim}
-\noindent Next, we compile mpiBLAST.  Set up the appropriate environment variables:
-\begin{verbatim}
-$> export CC=icc
-$> export CXX=icpc
-$> export AR=xiar
-\end{verbatim}
-\noindent Then, run the configure script:
-\begin{verbatim}
-$> ./configure
-\end{verbatim}
-\noindent Next, open the make file in the \verb^src^ subdirectory, e.g.:
-\begin{verbatim}
-$> emacs src/Makefile
-\end{verbatim}
-\noindent Make the following changes to this make file:
-\begin{itemize}
-\item Adjust the compiler on line 108 from \verb^mpicc^ to \verb^mpiicc -mmic^ to invoke the Intel MPI compiler and build for the Phi.
-\item Change the optimization level on line 110 from \verb^-O2^ to \verb^-O3^.  Optionally, the \verb^-g^ flag may be removed.
-\item Adjust the compiler on line 118 from \verb^mpicxx^ to \verb^mpiicpc -mmic^ to invoke the Intel MPI compiler and build for the Phi.
 \item Change the optimization level on line 120 from \verb^-O2^ to \verb^-O3^.  Optionally, the \verb^-g^ flag may be removed.
 \end{itemize}
 \noindent Finally, begin the compilation process with \verb^make^.
@@ -650,7 +523,7 @@ in previous sections.
 \subsection{Running NCBI BLAST} \label{ssec:runncbi}
 
 This section describes the basic steps of executing a BLAST search using the NCBI implementation.  NCBI BLAST offers a large number of options and parameters that are not covered in this document. Refer to the NCBI website
-at \url{http://www.ncbi.nlm.nih.gov/books/NBK1763} for a more thorough introduction.  Since running BLAST is functionally equivalent on both the host and Phi architectures and the toolkit version 2.2.31, unified examples are presented.
+at \url{http://www.ncbi.nlm.nih.gov/books/NBK1763} for a more thorough introduction.
 It is assumed that both a BLAST formatted database and query file have been created.\\
 
 \noindent To run a protein search with NCBI BLAST, we can execute with:
@@ -669,12 +542,12 @@ by Dr. A. Golembiowski.
 
 \subsection{Running HPC-BLAST} \label{ssec:runhpc}
 
-This section demonstrates the steps to run HPC-BLAST for both the host and Phi architectures.  Several examples are presented to illustrate how HPC-BLAST is used in a variety of contexts. The examples include a single rank job, multiple ranks
+This section demonstrates the steps to run HPC-BLAST.  Several examples are presented to illustrate how HPC-BLAST is used in a variety of contexts. The examples include a single rank job, multiple ranks
 each sharing the database, and multiple ranks with replication groups.
 
 \subsubsection{Single Rank Example} \label{sssec:hpcsingle}
 
-The first step is to determine how many threads are to be used in the HPC-BLAST run.  For example, say we are using the Xeon Phi coprocessor in native mode and want to use a total of 60 threads.  Next, we determine how we wish the threads to be
+The first step is to determine how many threads are to be used in the HPC-BLAST run.  For example, say we are using an Intel Xeon processor and want to use a total of 60 threads.  Next, we determine how we wish the threads to be
 distributed in the single rank.  Suppose we want to there to be 4 thread groups, 5 team leaders per thread group, and each team leader will use a total of 3 BLAST search threads (\(4 \times 5 \times 3 = 60\)).  To express this for HPC-BLAST, we write the
 parameters of the job into a file called \emph{job\textunderscore params}.  The \emph{job\textunderscore params} file is read by HPC-BLAST and by \emph{stitch\textunderscore blast\textunderscore output} and is expected to be in the current working directly.
 For this example, we can express the parallel job configuration with:
@@ -688,17 +561,16 @@ $> ./distribute_queries -i query.fasta -r 1 -g 4 -t a
 \end{verbatim}
 \noindent Now, we can start the BLAST search.  For example, suppose we are using a compute node on the \beac cluster.  We can start the job with:
 \begin{verbatim}
-$> micmpiexec -n 1 -host $HOSTNAME-mic0 -wdir /PATH/TO/WORKDIR \
-/PATH/TO/WORKDIR/hpc_blastp -db db-name -query query.fasta -num_threads 3 \
--out blast.ouput
+$> micmpiexec -n 1 /PATH/TO/WORKDIR/hpc_blastp \
+-db db-name -query query.fasta -num_threads 3 -out blast.ouput
 \end{verbatim}
 \noindent After HPC-BLAST finishes execution, a single output file will be generated: \emph{blast.output.0.0.0.0.0}.
 
 \subsubsection{Single Rank Replication Groups} \label{sssec:hpc1repg}
 
-In the next example, we will utilize multiple replication groups on the same host device.  Each replication group will use the same database; thus, only query distribution will occur at the MPI level.  Suppose we use 4 replication groups and wish to
-run on the Xeon host processor.  On the \beac cluster, each compute node has dual Xeon E5-2670 processors, each with 8 physical threads and 8 hyper-threads, for a total of 32 threads.  So, each rank of HPC-BLAST should be limited to 8 threads,
-at most, to prevent over-saturating the hardware.  We then decide to use 2 thread groups with 2 team leaders and two search threads for each rank.  We write these parameters for the run into the \emph{job\textunderscore params} file:
+In the next example, we will utilize multiple replication groups on the same host.  Each replication group will use the same database; thus, only query distribution will occur at the MPI level.  Suppose we use 4 replication groups and wish to run on an Intel Xeon processor.  Suppose we are running on a Skylake model which has 20 cores, each supporting 2 threads for a total 40 logical cores.
+So, each rank of HPC-BLAST should be limited to 10 threads, at most, to prevent over-saturating the hardware. We will limit ourselves to 32 threads in this example.
+We then decide to use 2 thread groups with 2 team leaders and two search threads for each rank.  We write these parameters for the run into the \emph{job\textunderscore params} file:
 \begin{verbatim}
 $> echo 2 2 1 4 > job_params
 \end{verbatim}
@@ -707,42 +579,12 @@ ranks.  The queries are distributed with:
 \begin{verbatim}
 $> ./distribute_queries -i query.nucl -r 4 -g 2 -t n
 \end{verbatim}
-\noindent Next, we can start the job on a single node on the \beac cluster:
+\noindent Next, we can start the job on a single node on a compute node:
 \begin{verbatim}
-$> micmpiexec -n 4 -host $HOSTNAME -wdir /PATH/TO/WORKDIR \
-/PATH/TO/WORKDIR/hpc_blastn -task blastn -db db-name -query query.nucl \
--num_threads 2 -out blast.output
+$> micmpiexec -n 4 /PATH/TO/WORKDIR/hpc_blastn \
+-task blastn -db db-name -query query.nucl -num_threads 2 -out blast.output
 \end{verbatim}
 \noindent After HPC-BLAST finishes execution, several files will be generated following the convention \emph{blast.output.x.x.0.0.0}, where  \emph{x} corresponds to the replication groups and ranges over \([0..3]\). 
-Finally, the output created from the HPC-BLAST run can be merged into a single output file with:
-\begin{verbatim}
-$> ./stitch_blast_output blast.output
-\end{verbatim}
-
-For the next example, suppose we will use 8 replication groups each with a single rank.  We will use the Xeon Phi coprocessor in native mode for this example and place 2 MPI ranks on each Xeon Phi device.  Since each compute node of the
-\beac cluster has 4 Xeon Phi coprocessors, a single compute node will be sufficient for this parallel job.  Since the Xeon Phi 5110p coprocessors available on \beac support
-240 hardware threads and two ranks will be launched on each Phi, we will limit each rank to 120 threads.  For this example, we will configure the ranks to use 40 thread groups with 3 team leaders and reflect this decision in the \emph{job\textunderscore params} file:
-\begin{verbatim}
-$> echo 40 3 1 8 > job_params
-\end{verbatim}
-\noindent Next, the queries are distributed:
-\begin{verbatim}
-$> ./distribute_queries -i query.nucl -r 8 -g 40 -t n
-\end{verbatim}
-\noindent To start the parallel job, we can launch with a colon separated list for all hosts, manually create a machine file, or use a \beac specific custom script to automatically create a machine file.  We will use the last option.
-The machine file can be created in an interactive job or in a \emph{qsub} script with:
-\begin{verbatim}
-$> generate-mic-hostlist micnative 2 0 > machine.run
-\end{verbatim}
-%\noindent Note, the above command uses off of the \verb^PBS_NODEFILE^ environment variable.
-The parallel job can then start with:
-\begin{verbatim}
-$> micmpiexec -genv I_MPI_PIN_DOMAIN 120:compact -machinefile machine.run \
--n 8 -wdir /PATH/TO/WORKDIR /PATH/TO/WORKDIR/hpc_blastn -task blastn \
--db db-name -query query.nucl -num_threads 1 -out blast.output
-\end{verbatim}
-\noindent The \emph{MPI\textunderscore PIN\textunderscore DOMAIN} environment variable is used here to endow the threads created by the HPC-BLAST ranks with a compact affinity.
-After HPC-BLAST finishes execution, several files will be generated following the convention \emph{blast.output.x.x.0.0.0}, where  \emph{x} corresponds to the replication groups and ranges over \([0..7]\). 
 Finally, the output created from the HPC-BLAST run can be merged into a single output file with:
 \begin{verbatim}
 $> ./stitch_blast_output blast.output
@@ -770,8 +612,8 @@ Volumes:
 \end{verbatim}
 
 \noindent Since there are 4 subsets in the partition, we will need 4 ranks per replication group unless we want ranks to cycle over multiple databases.
-Let us also use 4 replication groups for the parallel job.  Thus, we will launch with a total of 16 MPI ranks.  We will also use the Xeon host processor and map a single rank to each compute node.  On the rank level, we will use all 32 threads and configure them as follows:
-16 thread groups with 2 team leaders using a single search thread.  Now, put these parameters into the \emph{job\textunderscore params} file:
+Let us also use 4 replication groups for the parallel job.  Thus, we will launch with a total of 16 MPI ranks.  We will also use Intel Xeon processors and map a single rank to each compute node.  On the rank level, we will use 32
+threads and configure them as follows: 16 thread groups with 2 team leaders using a single search thread.  Now, put these parameters into the \emph{job\textunderscore params} file:
 \begin{verbatim}
 $> echo 16 2 4 4 > job_params
 \end{verbatim}
@@ -781,7 +623,7 @@ $> ./distribute_queries -i query.prot -r 4 -g 16 -t a
 \end{verbatim}
 \noindent Assuming we have submitted a batch job or an interactive job with 16 compute nodes, we can start the parallel job with:
 \begin{verbatim}
-$> micmpiexec -n 16 -wdir /PATH/TO/WORKDIR /PATH/TO/WORKDIR/hpc_blastp \
+$> micmpiexec -n 16 /PATH/TO/WORKDIR/hpc_blastp \
 -db db -query query.prot -num_threads 1 -out blast.output -dbsize 18394721
 \end{verbatim}
 \noindent {\bf Note:}  Recall that \emph{makeblastdb} creates an alias file when a FASTA database is partitioned into subsets.  This file should be deleted, or hidden, to prevent BLAST from attempting to cycle over the entire partition rather than use the database subset HPC-BLAST
@@ -796,49 +638,6 @@ into a single output file with:
 \begin{verbatim}
 $> ./stitch_blast_output blast.output
 \end{verbatim}
-
-For the second example, we will run natively on the Xeon Phi coprocessors.  We will assume the database has been partitioned into 8 subsets and use 5 replication groups.
-Since the database is the same, the number of residues shown in the previous example is still applicable even if the partition has changed. Thus, there is no need to run \verb^blastdbcmd^ a second time.
-Thus, a total of 40 ranks are used. Further, we will launch 4 ranks per Xeon Phi and limit each MPI rank of HPC-BLAST to use 60 threads configured as 10 threads groups, 2 team leaders, and 3 search threads.
-These parameters are reflected in the \emph{job\textunderscore params} file:
-\begin{verbatim}
-$> echo 10 2 8 5 > job_params
-\end{verbatim}
-\noindent Since we are using 4 ranks per Phi, we will need either a batch or interactive job with at least 3 \beac compute nodes in order to get to 10 Xeon Phis.  For this example, let us assume that we get 5 compute nodes because we have decided
-to only use \verb^mic0^ and \verb^mic2^ on any given node.  Next, the queries are distributed:
-\begin{verbatim}
-$> ./distribute_queries -i query.prot -r 5 -g 10 -t a
-\end{verbatim}
-\noindent As in the second example of Section \ref{sssec:hpc1repg}, we will use the custom script \emph{generate-mic-hostlist} to automatically generate a machine file to aid in launching the parallel job.  Here, we are launching with 4 ranks per Phi:
-\begin{verbatim}
-$> generate-mic-hostlist micnative 4 0 > machine.run
-\end{verbatim}
-\noindent Next, edit the machine file to remove the lines corresponding to \verb^mic1^ and \verb^mic3^ on all compute nodes in the job.  The parallel job can then start with:
-\begin{verbatim}
-$> micmpiexec -genv I_MPI_PIN_DOMAIN 60:compact -machinefile machine.run \
--n 40 -wdir /PATH/TO/WORKDIR /PATH/TO/WORKDIR/hpc_blastp -db db -query query.prot \
--num_threads 3 -out blast.output -dbsize 18394721
-\end{verbatim}
-\noindent The \emph{MPI\textunderscore PIN\textunderscore DOMAIN} environment variable is used here to endow the threads created by the HPC-BLAST ranks with a compact affinity.  And since there are four ranks per Phi, we use all of the 240 hardware threads.
-After HPC-BLAST finishes execution, several files will be generated following the convention 
-\emph{blast.output.x.x.y.0.0}, where  \emph{x} corresponds to the replication groups and ranges over \([0..4]\), and \emph{y} corresponds to the rank's index in the replication group
-and ranges over \([0..7]\).
-Finally, the output created from the HPC-BLAST run can be merged into a single output file with:
-\begin{verbatim}
-$> ./stitch_blast_output blast.output
-\end{verbatim}
-
-%\subsubsection{Hybrid Run Example} \label{sssec:hpchybrid}
-
-%HPC-BLAST also supports hybrid parallel jobs where ranks can be launched on both the host processor and Xeon Phi coprocessor, simultaneously.  Due to the differences in architectures, ranks that launch on separate devices need to be have their respective
-%thread configurations be separate, as well.  To accomplish this, a separate binary is compiled from the sources designated as hybrid.  Further, since HPC-BLAST currently uses static decomposition of work, the work to be distributed must be carefully selected to
-%achieve a reasonable level of load balance.
-
-%Experimental evidence suggests that a well configured HPC-BLAST job on a Xeon Phi 5110p performs at about 25\% of the performance of a well configured HPC-BLAST job on a pair of Xeon E5-2670 processors.  This is a rough approximation and will certainly
-%depend on a variety of factors including: database size, database composition, amount of similarity between the queries and the database, and the configuration of the parallel jobs on the separate host devices.  Assuming that 4 Xeon Phi coprocessors are roughly equivalent
-%to a pair of Xeons, we must decide how to split the work.  For instance, we can have both the Xeons and the Phis scan the entire database but split the queries in half.  Alternatively, we could give both 
-%the Xeons and the Phis the entire query set and split the database across the two architectures.
-%Either the above scenarios represent legitimate uses, but the performance between the two cases is likely to be different.  Until a dynamic load balancing strategy is in place, experience will have to guide the right selection of work decomposition.
 
 \subsubsection{Checkpointing}\label{sssec:checkpointing}
 
@@ -870,17 +669,14 @@ Note that \verb^Data^ and \verb^BLASTMAT^ paths match as do \verb^BLASTDB^ and \
 path is used to specify the directory of locally mounted storage, i.e. storage connected directly to compute nodes.  In the examples provided below, the use of the virtual database frags flag indicates that we do not
 wish to load database fragments to local storage but instead load them into RAM.\\
 
-\noindent {\bf Note 2:} In the examples below, it is assumed that the host version of the \verb^mpiformatdb^ binary is used. The Xeon Phi version may be used but it will perform substantially slower due to the serial
-nature of this application.\\
-
-In the first example, we will run mpiBLAST using 14 worker processes on a single compute node of the \beac cluster.  First, we need to format the database with the tool provided in the mpiBLAST distribution:
+In the first example, we will run mpiBLAST using 14 worker processes on a single compute node.  First, we need to format the database with the tool provided in the mpiBLAST distribution:
 \begin{verbatim}
 $> ./mpiformatdb -N 14 -i nr -o F -p T
 \end{verbatim}
 \noindent This will partition the \emph{nr} database into 14 subsets.  Next, we can launch the parallel job with:
 \begin{verbatim}
-$> micmpiexec -n 16 -host $HOSTNAME -wdir /PATH/TO/WORKDIR \
-/PATH/TO/WORKDIR/mpiblast --partition-size=15 --use-parallel-write \
+$> micmpiexec -n 16 /PATH/TO/WORKDIR/mpiblast \
+--partition-size=15 --use-parallel-write \
 --use-virtual-frags -p blastp -d nr -i query.prot -a 1 -o mpiblast.out
 \end{verbatim}
 \noindent Note that we launched with 16 MPI ranks: 14 workers, one master, and one super master.  The option \emph{--partition-size=15} tells mpiBLAST that a partition has 14 workers (plus one for the master).  The options \emph{--use-parallel-write}
@@ -890,8 +686,8 @@ $> ./mpiformatdb -N 14 -i nt -o F -p F
 \end{verbatim}
 \noindent And:
 \begin{verbatim}
-$> micmpiexec -n 16 -host $HOSTNAME -wdir /PATH/TO/WORKDIR \
-/PATH/TO/WORKDIR/mpiblast --partition-size=15 --use-parallel-write \
+$> micmpiexec -n 16 /PATH/TO/WORKDIR/mpiblast \
+--partition-size=15 --use-parallel-write \
 --use-virtual-frags -p blastn -d nt -i query.prot -a 1 -o mpiblast.out
 \end{verbatim}
 \noindent In the above cases, the \emph{-a} option is to tell BLAST how many threads to use in the search.\\
@@ -902,26 +698,22 @@ with:
 $> ./mpiformatdb -N 14 -i nr -o F -p T
 \end{verbatim}
 \noindent Now, suppose we have requested 6 compute nodes for the parallel job.  In total we will be launching 91 ranks ( \(6 \times (14\,\, \mbox{workers} + 1\,\, \mbox{master} ) + 1\,\, \mbox{super master}\) ).  Now, we create a machine file that describes how the ranks
-are distributed to the compute nodes.  On the \beac cluster, this might look like:
+are distributed to the compute nodes.  On a cluster, this might look like:
 \begin{verbatim}
-beacon010:15
-beacon009:15
-beacon008:15
-beacon007:15
-beacon006:15
-beacon005:16
+node001:15
+node002:15
+node003:15
+node004:15
+node005:15
+node006:16
 \end{verbatim}
 \noindent Note, that the last compute node has one more rank than the other nodes.  This is because mpiBLAST assigns the highest rank number the role of the super master.  Distributing the ranks in this way makes sure that each node has a complete replication group.
 Finally, the job can be run with:
 \begin{verbatim}
-$> micmpiexec -n 91 -machinefile machine.run -wdir /PATH/TO/WORKDIR \
+$> micmpiexec -n 91 -machinefile machine.run \
 /PATH/TO/WORKDIR/mpiblast --partition-size=15 --use-parallel-write \
 --use-virtual-frags -p blastp -d nr -i query.prot -a 1 -o mpiblast.out
 \end{verbatim}
 \noindent When run with multiple replication groups, mpiBLAST will produce an output file for each group.
-
-
-\clearpage
-
 
 \end{document}

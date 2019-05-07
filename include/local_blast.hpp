@@ -16,25 +16,25 @@
 /* $Id: local_blast.hpp 396870 2013-04-23 14:03:03Z madden $
  * ===========================================================================
  *
- *                            PUBLIC DOMAIN NOTICE
+ *                            PUBLIC DOMAIN NOTICE                          
  *               National Center for Biotechnology Information
- *
- *  This software/database is a "United States Government Work" under the
- *  terms of the United States Copyright Act.  It was written as part of
- *  the author's official duties as a United States Government employee and
- *  thus cannot be copyrighted.  This software/database is freely available
- *  to the public for use. The National Library of Medicine and the U.S.
- *  Government have not placed any restriction on its use or reproduction.
- *
- *  Although all reasonable efforts have been taken to ensure the accuracy
- *  and reliability of the software and data, the NLM and the U.S.
- *  Government do not and cannot warrant the performance or results that
- *  may be obtained by using this software or data. The NLM and the U.S.
- *  Government disclaim all warranties, express or implied, including
+ *                                                                          
+ *  This software/database is a "United States Government Work" under the   
+ *  terms of the United States Copyright Act.  It was written as part of    
+ *  the author's official duties as a United States Government employee and 
+ *  thus cannot be copyrighted.  This software/database is freely available 
+ *  to the public for use. The National Library of Medicine and the U.S.    
+ *  Government have not placed any restriction on its use or reproduction.  
+ *                                                                          
+ *  Although all reasonable efforts have been taken to ensure the accuracy  
+ *  and reliability of the software and data, the NLM and the U.S.          
+ *  Government do not and cannot warrant the performance or results that    
+ *  may be obtained by using this software or data. The NLM and the U.S.    
+ *  Government disclaim all warranties, express or implied, including       
  *  warranties of performance, merchantability or fitness for any particular
- *  purpose.
- *
- *  Please cite the author in any work or product based on this material.
+ *  purpose.                                                                
+ *                                                                          
+ *  Please cite the author in any work or product based on this material.   
  *
  * ===========================================================================
  *
@@ -101,23 +101,23 @@ public:
                 CRef<CBlastOptionsHandle> opts_handle,
                 BlastSeqSrc* seqsrc,
                 CRef<IBlastSeqInfoSrc> seqInfoSrc);
-
+    
     /// Executes the search
     CRef<CSearchResultSet> Run();
-
+    
     /// Set a function callback to be invoked by the CORE of BLAST to allow
     /// interrupting a BLAST search in progress.
     /// @param fnptr pointer to callback function [in]
-    /// @param user_data user data to be attached to SBlastProgress structure
+    /// @param user_data user data to be attached to SBlastProgress structure 
     /// [in]
-    /// @return the previously set TInterruptFnPtr (NULL if none was
+    /// @return the previously set TInterruptFnPtr (NULL if none was 
     /// provided before)
     TInterruptFnPtr SetInterruptCallback(TInterruptFnPtr fnptr,
                                          void* user_data = NULL) {
         _ASSERT(m_PrelimSearch);
         return m_PrelimSearch->SetInterruptCallback(fnptr, user_data);
     }
-
+  
     /// Retrieve any error/warning messages that occurred during the search
     TSearchMessages GetSearchMessages() const;
 
@@ -146,7 +146,7 @@ public:
 private:
     /// Query factory from which to obtain the query sequence data
     CRef<IQueryFactory> m_QueryFactory;
-
+    
     /// Options to use
     CRef<CBlastOptions> m_Opts;
 
@@ -159,8 +159,7 @@ private:
 
     /// Object which runs the traceback stage of the search
     CRef<CBlastTracebackSearch> m_TbackSearch;
-    //CRef<CBlastTracebackSearchSearcher> m_TbackSearch;//ceb temporary
-
+    
     /// Local DB adaptor (if one was) passed to constructor.
     CRef<CLocalDbAdapter> m_LocalDbAdapter;
 

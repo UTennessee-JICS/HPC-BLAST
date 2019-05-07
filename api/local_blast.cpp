@@ -50,7 +50,7 @@ static char const rcsid[] =
  * please do not rely on them until this notice is removed.
  */
 
- #include <mpi.h>
+#include <mpi.h>
 
 #include <ncbi_pch.hpp>
 #include <algo/blast/api/local_blast.hpp>
@@ -83,7 +83,7 @@ SplitQuery_GetChunkSize(EProgram program)
     char* chunk_sz_str = getenv("CHUNK_SIZE");
     if (chunk_sz_str && !NStr::IsBlank(chunk_sz_str)) {
         retval = NStr::StringToInt(chunk_sz_str);
-        _TRACE("DEBUG: Using query chunk size " << retval);
+        _TRACE("Using query chunk size from environment " << retval);
     } else {
 
         switch (program) {
@@ -92,6 +92,7 @@ SplitQuery_GetChunkSize(EProgram program)
             break;
         case eMegablast:
         case eDiscMegablast:
+        case eMapper:
             retval = 5000000;
             break;
         case eTblastn:
@@ -107,6 +108,10 @@ SplitQuery_GetChunkSize(EProgram program)
             // then each of these chunks is translated
             retval = 10002;
             break;
+        case eVecScreen:
+        	// Disable query splitting for vecscreen
+        	retval =1;
+        	break;
         case eBlastp:
         default:
             retval = 10000;
@@ -205,7 +210,7 @@ CLocalBlast::Run()
          size_t index;
          EResultType res_type = eDatabaseSearch;
          unsigned int num_subjects = 0;
-         if (m_LocalDbAdapter.NotEmpty() && !m_LocalDbAdapter->IsBlastDb()) {
+         if (m_LocalDbAdapter.NotEmpty() && !m_LocalDbAdapter->IsBlastDb() && !m_LocalDbAdapter->IsDbScanMode()) {
              res_type = eSequenceComparison;
              IBlastSeqInfoSrc *  subject_infosrc = m_LocalDbAdapter->MakeSeqInfoSrc();
              if(subject_infosrc != NULL) {
@@ -245,19 +250,19 @@ CLocalBlast::Run()
 
     try 
     {
-       m_PrelimSearch->SetNumberOfThreads(GetNumberOfThreads());
-       m_InternalData = m_PrelimSearch->Run();
+      m_PrelimSearch->SetNumberOfThreads(GetNumberOfThreads());
+      m_InternalData = m_PrelimSearch->Run();
     } 
     catch( CIndexedDbException & ) 
     {
-       throw;
+      throw;
     } 
     catch (CBlastException & e) 
     {
-	if(e.GetErrCode() == CBlastException::eCoreBlastError) 
-        {
-	   throw;
-	}
+      if(e.GetErrCode() == CBlastException::eCoreBlastError) 
+      {
+	throw;
+      }
     }
     catch (...) {  }
 
@@ -309,15 +314,14 @@ CLocalBlast::Run()
                                                   m_Opts,
                                                   seqinfo_src,
                                                   search_msgs));
-
-    if (m_LocalDbAdapter.NotEmpty() && !m_LocalDbAdapter->IsBlastDb()) {
+    if (m_LocalDbAdapter.NotEmpty() && !m_LocalDbAdapter->IsBlastDb() 
+	&& !m_LocalDbAdapter->IsDbScanMode()) {
         m_TbackSearch->SetResultType(eSequenceComparison);
     }
     m_TbackSearch->SetNumberOfThreads(GetNumberOfThreads());
     CRef<CSearchResultSet> retval = m_TbackSearch->Run();
     retval->SetFilteredQueryRegions(m_PrelimSearch->GetFilteredQueryRegions());
     m_Messages = m_TbackSearch->GetSearchMessages();
-
 
     //ceb Save HSPResults object created in mTbackSearch object
     HSPResults = m_TbackSearch->GetHSPResults();
