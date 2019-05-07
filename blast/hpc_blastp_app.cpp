@@ -1,20 +1,3 @@
-/*  Copyright 2016 UTK JICS AACE
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *           http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- *
- * ===========================================================================
- *
 /*  $Id: blastp_app.cpp 461340 2015-03-09 18:08:15Z ivanov $
  * ===========================================================================
  *
@@ -88,8 +71,8 @@ USING_SCOPE(objects);
 #endif
 
 #define USE_RESTART 0
-#define UPDATE 1           //enable thread level agglomeration of results
-#define TIMING 1
+#define UPDATE 1
+#define TIMING 0
 #define OUTPUT 1
 #define CLEAN_UP_OBJECTS 1
 #define PARTIAL_DATABASE 0
@@ -353,7 +336,7 @@ int CBlastpApp::Run(void)
 	ifs.seekg(0,ifs.beg);  // Go back to the beginning.
 	
 	// Allocate the buffer.
-	buffer[i] = (char*) malloc( bsize[i] * sizeof(char) );
+	buffer[i] = (char*) malloc( (bsize[i]+1) * sizeof(char) );
 
         if ( buffer[i] == 0 ){ return -1; }
 
@@ -436,7 +419,18 @@ int CBlastpApp::Run(void)
     BlastScoreBlkGroup = new BlastScoreBlk*[num_thread_groups];
     QueryBatchGroup = new CRef<CBlastQueryVector>[num_thread_groups];
 
-
+    /*
+    std::cout << "Address of buffer is " << buffer << std::endl;
+    for ( int tg=0; tg < num_thread_groups; tg++ )
+      std::cout << "Address of buffer["<< tg << "] is " << &(buffer[tg]) << std::endl;
+    std::cout << "Address of bsize is " << bsize << std::endl;
+    for ( int tg=0; tg < num_thread_groups; tg++ )  {
+      std::cout << "Address of bsize[" << tg << "] is " << &(bsize[tg]) << std::endl;
+      std::cout << "Contents of bsize[" << tg << "] is " << bsize[tg] << std::endl;
+    }
+    std::cout << "Value of gbl_bsize is " << gbl_bsize << std::endl;
+    std::cout.flush();
+    */
 
 #pragma omp parallel default(shared) num_threads( num_thread_groups*num_team_leaders )
     {
@@ -445,6 +439,8 @@ int CBlastpApp::Run(void)
       // Compute the thread group I belong to.
       int thread_group_id = tid / num_team_leaders;
       int local_tid = tid % num_team_leaders;
+
+       #pragma omp barrier
 
        // Running total of thread group queries emitted from GetNextSeqBatch
        int lintCurrentNumberOfThreadGroupQueries=0;
@@ -752,7 +748,7 @@ my_oid_stop =  ( local_tid + 1 )*(num_seqs_per_team_leader/10);
 	    if (local_tid==0) 
             {// If first batch
 
-	      std::cout<<"checkpt 1.1 tid="<<tid<<" local_tid="<<local_tid<<" query_batch->Size()="<<query_batch->Size()<<"\n";std::cout.flush();
+	      //std::cout<<"checkpt 1.1 tid="<<tid<<" local_tid="<<local_tid<<" query_batch->Size()="<<query_batch->Size()<<"\n";std::cout.flush();
 
 	      if (lintCurrentNumberOfThreadGroupQueries==0) {// Start at 0 
 		lintpBatchStartPosition[thread_group_id] = 0;
@@ -812,6 +808,23 @@ my_oid_stop =  ( local_tid + 1 )*(num_seqs_per_team_leader/10);
                double t_postsearch = omp_get_wtime();
                //std::cout<<"\n tid:"<<tid<<" search time: "<< (t_timer[10]-t_timer[9]) <<" ms\n";std::cout.flush();
                std::cout<<"\n tid:"<<tid<<" search time: "<< (t_postsearch-t_presearch) <<" ms\n";std::cout.flush();
+
+               #pragma omp barrier
+	       /*
+	       #pragma omp single
+	       {
+		 std::cout << "Address of buffer is " << buffer << std::endl;
+		 for ( int tg=0; tg < num_thread_groups; tg++ )
+		   std::cout << "Address of buffer["<< tg << "] is " << &(buffer[tg]) << std::endl;
+		 std::cout << "Address of bsize is " << bsize << std::endl;
+		 for ( int tg=0; tg < num_thread_groups; tg++ )  {
+		   std::cout << "Address of bsize[" << tg << "] is " << &(bsize[tg]) << std::endl;
+		   std::cout << "Contents of bsize[" << tg << "] is " << bsize[tg] << std::endl;
+		 }
+		 std::cout << "Value of gbl_bsize is " << gbl_bsize << std::endl;
+		 std::cout.flush();
+	       }
+	       */
 #endif //TIMING
 
 #if UPDATE
@@ -836,7 +849,8 @@ my_oid_stop =  ( local_tid + 1 )*(num_seqs_per_team_leader/10);
 	      tHSPResults[tid] =    Blast_HSPResultsNew(0);
 	      //results of BlastQueryInfoNew is not handled appropriately in combine function
 	      //tQueryInfo[tid] =     BlastQueryInfoNew(eBlastTypeBlastp,0);//{0,0,0,NULL,0,NULL};
-	      tQueryInfo[tid] =     &BlastQueryInfo{0,0,0,NULL,0,NULL};
+	      //tQueryInfo[tid] =     &BlastQueryInfo{0,0,0,NULL,0,NULL};
+	      tQueryInfo[tid] =     new BlastQueryInfo{0,0,0,NULL,0,NULL};
 	      tBlastScoreBlk[tid] = BlastScoreBlkNew(BLASTAA_SEQ_CODE,0);//type could be anything here
               query_batch->clear();
 	    }
@@ -933,8 +947,8 @@ my_oid_stop =  ( local_tid + 1 )*(num_seqs_per_team_leader/10);
 						 queries, 
 						 &opt,
 						 SeqInfoSrc);
-		 BlastFormatter_PreFetchSequenceData(*results, gbl_scope);
-
+		 BlastFormatter_PreFetchSequenceData(*results, gbl_scope,
+						     fmt_args->GetFormattedOutputChoice());
 		 //Loop over results
 		 ITERATE(CSearchResultSet, result, *results)
 		   {
@@ -2161,7 +2175,9 @@ BlastHSPList* BlastHSPListDuplicate(const BlastHSPList *bhspl)
   // Allocate the array for High Scoring segment pairs.
   //new_bhspl->hsp_array = (BlastHSP**) calloc( new_bhspl->allocated, sizeof(BlastHSP*) );
   //new_bhspl->hsp_array = Blast_HSPListNew(new_bhspl->hsp_max);
-  
+
+  new_bhspl->hsp_array = (BlastHSP**)realloc( new_bhspl->hsp_array,new_bhspl->allocated*sizeof(BlastHSP*));
+
   // Loop over all HSPs between the query and the subject sequence.
   for ( int BlastHSP_hsp_array_index=0; BlastHSP_hsp_array_index < bhspl->hspcnt; ++BlastHSP_hsp_array_index )
     {
@@ -2517,7 +2533,10 @@ BlastScoreBlk *gbsbpfncDuplicateBlastScoreBlk(BlastScoreBlk *ScoreBlkGroup)
 
   lbsbpBlastScoreBlk->alphabet_start=ScoreBlkGroup->alphabet_start;
 
-  lbsbpBlastScoreBlk->name=ScoreBlkGroup->name;
+  //int str_length = strlen( ScoreBlkGroup->name );
+  //lbsbpBlastScoreBlk->name = malloc( sizeof(char)*(str_length+1) );
+  //strncpy ( lbsbpBlastScoreBlk->name, ScoreBlkGroup->name, (size_t) str_length );
+  lbsbpBlastScoreBlk->name = ScoreBlkGroup->name;
 
   lbsbpBlastScoreBlk->comments=NULL;
 
@@ -3273,8 +3292,12 @@ CRef<CSearchResultSet> gsrsfncCollectResults(BlastHSPResults* hsp_results,
 
     // This is the data resulting from the traceback phase (before it is converted to ASN.1).
     // We wrap it this way so it is released even if an exception is thrown below.
-    CRef< CStructWrapper<BlastHSPResults> > HspResults;
-    HspResults.Reset(WrapStruct(hsp_results, Blast_HSPResultsFree));
+
+    // --shedsaw-- I think this may be problematic as it might call the free'ing function when
+    // the object goes out of scope.
+
+    //CRef< CStructWrapper<BlastHSPResults> > HspResults;
+    //HspResults.Reset(WrapStruct(hsp_results, Blast_HSPResultsFree));
 
     _ASSERT(m_SeqInfoSrc);
     _ASSERT(m_QueryFactory);
@@ -3284,7 +3307,7 @@ CRef<CSearchResultSet> gsrsfncCollectResults(BlastHSPResults* hsp_results,
 
 
 
-    m_SeqInfoSrc->GarbageCollect();
+    //m_SeqInfoSrc->GarbageCollect();
     vector<TSeqLocInfoVector> subj_masks;
     //converts hsp object into align vector
     //std::cout<<"gsrsfncCollectResults checkpt 5 \n";std::cout.flush();
